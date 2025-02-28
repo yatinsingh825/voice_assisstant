@@ -57,6 +57,13 @@ class VoiceAssistant:
             "capabilities": self.show_capabilities,
             "features": self.show_capabilities,
             "commands": self.show_capabilities,
+            "owner": self.about_developer,
+            "Yatin": self.about_developer,
+            "my name": self.about_developer,
+            "who made you": self.about_developer,
+            "who created you": self.about_developer,
+            "who is your developer": self.about_developer,
+            "who is your creator": self.about_developer,
             "menu": self.show_capabilities,
             "weather": self.get_weather,  # New weather command
             "forecast": self.get_weather,  # Alternative weather command
@@ -89,6 +96,17 @@ class VoiceAssistant:
             print(f"Error loading reminders: {e}")
             return []
     
+    def about_developer(self, command):
+        """Provide information about the developer"""
+        developer_info = (
+            "My developer is Yatin Singh, a 2nd year student at CU pursuing AIML. "
+            "He created me as a voice assistant project to demonstrate his programming skills "
+            "and knowledge of artificial intelligence. Yatin is passionate about AI development "
+            "and aspires to work on advanced AI systems in the future. "
+            "He has invested significant time in designing my features to make me helpful and responsive."
+        )
+        self.speak(developer_info)
+
     def save_reminders(self):
         """Save reminders to file"""
         try:
@@ -157,12 +175,9 @@ class VoiceAssistant:
         self.speak(random.choice(responses))
     
     def handle_time_request(self, command):
-        """General handler for time requests"""
-        # Check if this is a time zone query
         if any(word in command for word in ["in", "at", "for"]):
             self.get_time_zone(command)
         else:
-            # Just the local time
             self.get_time()
     
     def get_time(self):
@@ -275,7 +290,7 @@ class VoiceAssistant:
             "word": "winword.exe",
             "excel": "excel.exe",
             "powerpoint": "powerpnt.exe",
-            "chrome": "chrome.exe",
+            "chrome": "C:\Program Files\Google\Chrome\Application\chrome.exe",
             "firefox": "firefox.exe",
             "edge": "msedge.exe",
             "explorer": "explorer.exe",
@@ -717,112 +732,110 @@ class VoiceAssistant:
             self.speak("I couldn't understand the task. Please try again.")
 
     def show_capabilities(self, command):
-   
-        # Define capability categories and their features
+    
         capabilities = {
-            "Time and Date": ["Get current time", "Get time in different cities", "Get current date"],
-            "Information": ["Search the web", "Find information on Wikipedia", "Get weather updates", "Get latest news"],
-            "System Control": ["Open applications", "Adjust screen brightness", "Control system settings"],
-            "Personal Management": ["Set reminders", "Manage to-do lists", "Create tasks"],
-            "Other Features": ["Exit the assistant"]
+        "Time and Date": ["Get current time", "Get time in different cities", "Get current date"],
+        "Information": ["Search the web", "Find information on Wikipedia", "Get weather updates", "Get latest news"],
+        "System Control": ["Open applications", "Adjust screen brightness", "Control system settings"],
+        "Personal Management": ["Set reminders", "Manage to-do lists", "Create tasks"],
+        "Other Features": ["Exit the assistant"]
         }
-    
+
         self.speak("Here are the things I can help you with:")
+
+    # List all capabilities
+        for category, features in capabilities.items():
+            self.speak(f"{category}:")
+        for feature in features:
+            self.speak(f"- {feature}")
+        time.sleep(0.5)  # Small pause
+
+        self.speak("You can ask me to do any of these tasks. What would you like me to do?")
     
-        # Present categories
-        for i, category in enumerate(capabilities.keys(), 1):
-            self.speak(f"{i}. {category}")
-    
-        # Ask for category selection
-        self.speak("Which category would you like to explore? Please say the number or the name.")
         category_response = self.listen()
-    
         selected_category = None
-    
+
         # Try to match by number first
         for word in category_response.split():
             if word.isdigit() and 1 <= int(word) <= len(capabilities):
                 selected_category = list(capabilities.keys())[int(word)-1]
-                break
-    
+            break
+
         # If no match by number, try matching by name
         if not selected_category:
             for category in capabilities.keys():
-                if category.lower() in category_response.lower():
-                    selected_category = category
-                    break
-    
-        # If still no match, pick a default or ask again
+             if category.lower() in category_response.lower():
+                selected_category = category
+                break
+
+    # If still no match, list all capabilities again
         if not selected_category:
-            self.speak("I'm not sure which category you meant. Let me tell you about all my capabilities.")
+            self.speak("I'm not sure which category you meant. Here are all my capabilities again:")
             for category, features in capabilities.items():
-                self.speak(f"{category}:")
-                for feature in features:
+             self.speak(f"{category}:")
+            for feature in features:
                     self.speak(f"- {feature}")
-                # Small pause between categories
-                time.sleep(0.3)
-        else:
-            # Show features for the selected category
-            self.speak(f"Here's what I can do with {selected_category}:")
-            for i, feature in enumerate(capabilities[selected_category], 1):
-                self.speak(f"{i}. {feature}")
-        
-            # Ask if user wants to try one of these features
-            self.speak("Would you like to try any of these features now? If so, which one?")
-            feature_response = self.listen()
-        
-            # Map general feature descriptions to command keywords
-            feature_to_command = {
-                "current time": "time",
-                "time in different": "time in",
-                "current date": "date",
-                "search the web": "search",
-                "wikipedia": "what is",
-                "weather": "weather",
-                "news": "news",
-                "open application": "open",
-                "brightness": "brightness",
-                "reminder": "reminder",
-                "to-do": "todo",
-                "task": "task",
-                "exit": "exit"
-            }
-        
-            # Try to identify which feature the user wants to try
-            selected_command = None
-        
-            # Check for direct feature mention
-            for feature_key, command in feature_to_command.items():
-                if feature_key.lower() in feature_response.lower():
-                    selected_command = command
-                    break
-        
-            # If no direct match, try to match by feature number within the category
-            if not selected_command:
-                for word in feature_response.split():
-                    if word.isdigit() and 1 <= int(word) <= len(capabilities[selected_category]):
-                        feature_text = capabilities[selected_category][int(word)-1].lower()
-                        # Find the closest command match
-                        for feature_key, command in feature_to_command.items():
-                            if feature_key.lower() in feature_text:
-                                selected_command = command
-                                break
-                        if selected_command:
+                    time.sleep(0.3)
+            return
+
+        # Show features for the selected category
+        self.speak(f"Here's what I can do with {selected_category}:")
+        for i, feature in enumerate(capabilities[selected_category], 1):
+            self.speak(f"{i}. {feature}")
+
+        # Ask if user wants to try one of these features
+        self.speak("Would you like to try any of these features now? If so, which one?")
+        feature_response = self.listen()
+
+        # Map general feature descriptions to command keywords
+        feature_to_command = {
+            "current time": "time",
+            "time in different": "time in",
+            "current date": "date",
+            "search the web": "search",
+            "wikipedia": "what is",
+            "weather": "weather",
+            "news": "news",
+            "open application": "open",
+            "brightness": "brightness",
+            "reminder": "reminder",
+            "to-do": "todo",
+            "task": "task",
+            "exit": "exit"
+        }
+
+        # Try to identify which feature the user wants to try
+        selected_command = None
+
+        # Check for direct feature mention
+        for feature_key, command in feature_to_command.items():
+            if feature_key.lower() in feature_response.lower():
+                selected_command = command
+                break
+
+        # If no direct match, try to match by feature number within the category
+        if not selected_command:
+            for word in feature_response.split():
+                if word.isdigit() and 1 <= int(word) <= len(capabilities[selected_category]):
+                    feature_text = capabilities[selected_category][int(word)-1].lower()
+                    # Find the closest command match
+                    for feature_key, command in feature_to_command.items():
+                        if feature_key.lower() in feature_text:
+                            selected_command = command
                             break
-        
-            # Execute the selected command if found
-            if selected_command:
-                self.speak(f"I'll help you with that. What specifically would you like to know about {selected_command}?")
-                specific_response = self.listen()
-            
-                # Combine the command with the specific request
-                full_command = f"{selected_command} {specific_response}"
-                self.process_command(full_command)
-            else:
-                self.speak("I'm not sure which feature you want to try. Please ask me directly when you're ready.")
-    
+                    if selected_command:
+                        break
 
+        # Execute the selected command if found
+        if selected_command:
+            self.speak(f"I'll help you with that. What specifically would you like to know about {selected_command}?")
+            specific_response = self.listen()
 
+            # Combine the command with the specific request
+            full_command = f"{selected_command} {specific_response}"
+            self.process_command(full_command)
+        else:
+            self.speak("I'm not sure which feature you want to try. Please ask me directly when you're ready.")
     def list_reminders(self, command):
         """List all reminders and to-dos"""
         if not self.reminders:
