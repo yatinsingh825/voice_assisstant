@@ -16,6 +16,10 @@ import screen_brightness_control as sbc
 import pickle  
 import socket  # For IP address functions
 import requests  # For web API calls
+import string
+import re
+import numpy as np
+from forex_python.converter import CurrencyRates
 
 class VoiceAssistant:
     def __init__(self, name="Swift"):
@@ -57,6 +61,12 @@ class VoiceAssistant:
             "what can you do": self.show_capabilities,
             "help": self.show_capabilities,
             "capabilities": self.show_capabilities,
+            "password": self.handle_password,
+            "generate password": self.generate_password,
+            "check password": self.check_password_strength,
+            "convert currency": self.convert_currency,
+            "exchange rate": self.convert_currency,
+            "currency": self.convert_currency,
             "features": self.show_capabilities,
             "check internet speed": self.check_speed,
             "internet speed": self.check_speed,
@@ -131,6 +141,201 @@ class VoiceAssistant:
             "He has invested significant time in designing my features to make me helpful and responsive."
         )
         self.speak(developer_info)
+
+    
+    def handle_password(self, command):
+        """Handle password-related commands"""
+        if "generate" in command:
+            self.generate_password(command)
+        elif "check" in command or "strength" in command:
+            self.check_password_strength(command)
+        else:
+            self.speak("Would you like to generate a password or check password strength?")
+
+    def generate_password(self, command):
+        """Generate a random password"""
+        try:
+            # Parse length from command
+            length = 10  # Default length
+            length_match = re.search(r'(\d+)\s*characters', command)
+            if length_match:
+                length = int(length_match.group(1))
+
+            # Check if specific requirements are mentioned
+            include_uppercase = "uppercase" in command or "capital" in command
+            include_lowercase = not ("no lowercase" in command or "without lowercase" in command)
+            include_numbers = "numbers" in command or "digits" in command
+            include_symbols = "symbols" in command or "special" in command
+
+            # If no specific requirements, include all character types
+            if not any([include_uppercase, include_lowercase, include_numbers, include_symbols]):
+                include_uppercase = include_lowercase = include_numbers = include_symbols = True
+
+            # Create character sets based on requirements
+            chars = ""
+            if include_lowercase:
+                chars += string.ascii_lowercase
+            if include_uppercase:
+                chars += string.ascii_uppercase
+            if include_numbers:
+                chars += string.digits
+            if include_symbols:
+                chars += string.punctuation
+
+            if not chars:
+                self.speak("I need at least one character type to generate a password.")
+                return
+
+            # Generate password
+            password = ''.join(random.choice(chars) for _ in range(length))
+
+            self.speak(f"I've generated a {length}-character password. The password is: {' '.join(password)}")
+            print(f"Generated password: {password}")
+        except Exception as e:
+            self.speak(f"Sorry, I couldn't generate a password. {str(e)}")
+
+    def check_password_strength(self, command):
+        """Check the strength of a password"""
+        try:
+            # Ask the user to type their password
+            self.speak("Please type the password you want to check in the console. It won't be spoken out loud for security.")
+            print("Type password here: ", end="")
+            password = input()
+
+            if not password:
+                self.speak("No password was entered.")
+                return
+
+            # Check password strength
+            length_score = min(len(password) / 12, 1.0) * 25  # Length up to 12 chars gets 25 points
+
+            has_lower = any(c.islower() for c in password)
+            has_upper = any(c.isupper() for c in password)
+            has_digit = any(c.isdigit() for c in password)
+            has_symbol = any(c in string.punctuation for c in password)
+
+            variety_score = (has_lower + has_upper + has_digit + has_symbol) * 15  # Each type worth 15 points
+
+            # Check for common patterns
+            patterns = [
+                r'12345', r'qwerty', r'password', r'admin', r'welcome',
+                r'123123', r'abcabc', r'\d{4}', r'([a-zA-Z])\1\1'  # Repeated chars
+            ]
+
+            pattern_deduction = 0
+            for pattern in patterns:
+                if re.search(pattern, password.lower()):
+                    pattern_deduction += 15
+
+            # Calculate final score
+            score = min(length_score + variety_score - pattern_deduction, 100)
+            score = max(score, 0)  # Ensure score isn't negative
+
+            # Determine strength category
+            if score >= 80:
+                strength = "very strong"
+            elif score >= 60:
+                strength = "strong"
+            elif score >= 40:
+                strength = "moderate"
+            elif score >= 20:
+                strength = "weak"
+            else:
+                strength = "very weak"
+
+            self.speak(f"The password strength is {strength} with a score of {int(score)} out of 100.")
+            print(f"Password strength: {strength} ({int(score)}/100)")
+
+            # Provide improvement suggestions
+            suggestions = []
+            if len(password) < 12:
+                suggestions.append("increase the length to at least 12 characters")
+            if not has_lower:
+                suggestions.append("add lowercase letters")
+            if not has_upper:
+                suggestions.append("add uppercase letters")
+            if not has_digit:
+                suggestions.append("add numbers")
+            if not has_symbol:
+                suggestions.append("add special characters")
+
+            if suggestions:
+                suggestion_text = ", ".join(suggestions[:-1])
+                if len(suggestions) > 1:
+                    suggestion_text += f", and {suggestions[-1]}"
+                else:
+                    suggestion_text = suggestions[0]
+                self.speak(f"To improve your password, you could {suggestion_text}.")
+        except Exception as e:
+            self.speak(f"Sorry, I couldn't check the password strength. {str(e)}")
+
+    def convert_currency(self, command):
+        """Convert currency from one type to another"""
+        try:
+            # Initialize currency converter
+            c = CurrencyRates()
+
+            # Parse the command to get currencies and amount
+            amount_match = re.search(r'(\d+(\.\d+)?)', command)
+            from_currency_match = re.search(r'from\s+(\w{3})', command)
+            to_currency_match = re.search(r'to\s+(\w{3})', command)
+
+            # Handle cases where currency codes might be spelled out
+            currency_map = {
+                'dollars': 'USD', 'usd': 'USD', 'dollar': 'USD', 'us dollar': 'USD', 'us dollars': 'USD',
+                'euros': 'EUR', 'euro': 'EUR', 'eur': 'EUR',
+                'pounds': 'GBP', 'pound': 'GBP', 'gbp': 'GBP', 'british pound': 'GBP',
+                'yen': 'JPY', 'jpy': 'JPY', 'japanese yen': 'JPY',
+                'yuan': 'CNY', 'cny': 'CNY', 'chinese yuan': 'CNY',
+                'rupees': 'INR', 'rupee': 'INR', 'inr': 'INR', 'indian rupee': 'INR'
+            }
+
+            # If no explicit pattern, try to extract from the command text
+            if not from_currency_match or not to_currency_match:
+                for currency_name, code in currency_map.items():
+                    if currency_name in command.lower():
+                        # Find where this currency appears in the command
+                        pos = command.lower().find(currency_name)
+                        if 'to' in command.lower()[pos:]:
+                            if not from_currency_match:
+                                from_currency_match = type('obj', (), {'group': lambda x: code})
+                        else:
+                            if not to_currency_match:
+                                to_currency_match = type('obj', (), {'group': lambda x: code})
+
+            # Interactive mode if information is missing
+            amount = float(amount_match.group(1)) if amount_match else None
+            from_currency = from_currency_match.group(1).upper() if from_currency_match else None
+            to_currency = to_currency_match.group(1).upper() if to_currency_match else None
+
+            if amount is None:
+                self.speak("What amount would you like to convert?")
+                amount = float(input("Enter amount: "))
+
+            if from_currency is None:
+                self.speak("What currency are you converting from? Please enter the 3-letter currency code.")
+                from_currency = input("From currency (e.g., USD): ").upper()
+
+            if to_currency is None:
+                self.speak("What currency are you converting to? Please enter the 3-letter currency code.")
+                to_currency = input("To currency (e.g., EUR): ").upper()
+
+            # Perform conversion
+            try:
+                conversion_rate = c.get_rate(from_currency, to_currency)
+                converted_amount = c.convert(from_currency, to_currency, amount)
+
+                # Format the output
+                self.speak(f"{amount} {from_currency} is equal to {converted_amount:.2f} {to_currency}.")
+                self.speak(f"The current exchange rate is 1 {from_currency} = {conversion_rate:.4f} {to_currency}.")
+                print(f"{amount} {from_currency} = {converted_amount:.2f} {to_currency}")
+                print(f"Rate: 1 {from_currency} = {conversion_rate:.4f} {to_currency}")
+            except Exception as e:
+                self.speak(f"I couldn't perform that conversion. Please make sure you're using valid currency codes.")
+                print(f"Conversion error: {str(e)}")
+        except Exception as e:
+            self.speak(f"Sorry, I encountered an error while converting currency: {str(e)}")
+
 
 
     def check_speed(self, command):
