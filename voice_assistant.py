@@ -14,6 +14,8 @@ import pytz
 from newsapi import NewsApiClient  
 import screen_brightness_control as sbc  
 import pickle  
+import socket  # For IP address functions
+import requests  # For web API calls
 
 class VoiceAssistant:
     def __init__(self, name="Swift"):
@@ -56,6 +58,29 @@ class VoiceAssistant:
             "help": self.show_capabilities,
             "capabilities": self.show_capabilities,
             "features": self.show_capabilities,
+            "check internet speed": self.check_speed,
+            "internet speed": self.check_speed,
+            "speed test": self.check_speed,
+            "what is my ip": self.get_ip_address,
+            "my ip": self.get_ip_address,
+            "ip address": self.get_ip_address,
+            "ping": self.ping_website,
+            "open website": self.open_website,
+            "go to": self.open_website,
+            "visit": self.open_website,
+            "show calendar": self.show_calendar,
+            "calendar": self.show_calendar,
+            "translate": self.translate_text,
+            "define": self.dictionary_lookup,
+            "meaning of": self.dictionary_lookup,
+            "tell me a joke": self.tell_joke,
+            "joke": self.tell_joke,
+            "motivate me": self.get_motivational_quote,
+            "inspire me": self.get_motivational_quote,
+            "quote": self.get_motivational_quote,
+            "search files": self.search_files,
+            "find files": self.search_files,
+
             "commands": self.show_capabilities,
             "owner": self.about_developer,
             "Yatin": self.about_developer,
@@ -107,6 +132,266 @@ class VoiceAssistant:
         )
         self.speak(developer_info)
 
+
+    def check_speed(self, command):
+        """Check internet speed using speedtest-cli"""
+        self.speak("Running an internet speed test. This might take a few moments...")
+        try:
+            # Use subprocess to run the speedtest-cli tool
+            self.speak("Opening the speed test website for you.")
+            webbrowser.open("https://www.speedtest.net/")
+            return True
+        except Exception as e:
+            self.speak(f"I encountered an error while checking internet speed: {str(e)}")
+            return False
+
+    def get_ip_address(self, command):
+        """Get the public and local IP address"""
+        try:
+            # Get public IP
+            self.speak("Retrieving your IP address information...")
+            response = requests.get("https://api.ipify.org?format=json")
+            public_ip = response.json()["ip"]
+
+            # Get local IP
+            hostname = socket.gethostname()
+            local_ip = socket.gethostbyname(hostname)
+
+            self.speak(f"Your public IP address is {public_ip}")
+            self.speak(f"Your local IP address is {local_ip}")
+            return True
+        except Exception as e:
+            self.speak(f"I encountered an error while retrieving your IP: {str(e)}")
+            return False
+
+    def ping_website(self, command):
+        """Ping a website to check connectivity"""
+        # Extract website from command
+        website = None
+        if "ping" in command:
+            website = command.replace("ping", "").strip()
+
+        if not website:
+            self.speak("Which website would you like to ping?")
+            website = self.listen()
+
+        if website:
+            self.speak(f"Pinging {website}. Please wait...")
+            try:
+                # Use subprocess to run ping command
+                process = subprocess.Popen(
+                    ["ping", "-n", "4", website],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True
+                )
+                output, error = process.communicate()
+
+                if error:
+                    self.speak(f"Error while pinging {website}: {error}")
+                else:
+                    # Extract average time from output
+                    if "Average" in output:
+                        avg_time = output.split("Average = ")[1].split("ms")[0]
+                        self.speak(f"Ping to {website} was successful with an average time of {avg_time} milliseconds.")
+                    else:
+                        self.speak(f"Ping to {website} completed. {website} is reachable.")
+                return True
+            except Exception as e:
+                self.speak(f"I couldn't ping {website}. Error: {str(e)}")
+                return False
+
+    def open_website(self, command):
+        """Open a website in the default browser"""
+        # Extract URL from command
+        url = None
+        for phrase in ["open website", "go to", "visit"]:
+            if phrase in command:
+                url = command.replace(phrase, "").strip()
+                break
+            
+        if not url:
+            self.speak("Which website would you like to open?")
+            url = self.listen()
+
+        if url:
+            # Add http:// if not present
+            if not url.startswith("http"):
+                url = "https://" + url
+
+            # Add .com if no domain extension
+            if "." not in url.split("//")[1]:
+                url = url + ".com"
+
+            try:
+                self.speak(f"Opening {url}")
+                webbrowser.open(url)
+                return True
+            except Exception as e:
+                self.speak(f"I couldn't open {url}. Error: {str(e)}")
+                return False
+
+    def show_calendar(self, command):
+        """Show calendar application or current month"""
+        self.speak("Opening calendar.")
+        try:
+            # For Windows, open the built-in Calendar app
+            subprocess.Popen("explorer.exe shell:AppsFolder\\microsoft.windowscommunicationsapps_8wekyb3d8bbwe!microsoft.windowslive.calendar")
+            return True
+        except Exception as e:
+            # Fallback to web calendar
+            self.speak("I couldn't open your calendar app. Opening web calendar instead.")
+            webbrowser.open("https://calendar.google.com")
+            return True
+
+    def translate_text(self, command):
+        """Translate text from one language to another"""
+        # Extract text and languages
+        text_to_translate = None
+        target_language = "english"  # Default
+
+        if "translate" in command:
+            parts = command.replace("translate", "").strip().split(" to ")
+            if len(parts) >= 1:
+                text_to_translate = parts[0].strip()
+                if len(parts) >= 2:
+                    target_language = parts[1].strip()
+
+        if not text_to_translate:
+            self.speak("What would you like me to translate?")
+            text_to_translate = self.listen()
+
+            if text_to_translate:
+                self.speak("To which language? Say 'to' followed by the language name.")
+                lang_response = self.listen()
+                if "to" in lang_response:
+                    target_language = lang_response.split("to")[1].strip()
+
+        if text_to_translate:
+            self.speak(f"Translating '{text_to_translate}' to {target_language}")
+            # Open Google Translate with the text
+            encoded_text = requests.utils.quote(text_to_translate)
+            encoded_lang = requests.utils.quote(target_language)
+            url = f"https://translate.google.com/?sl=auto&tl={encoded_lang}&text={encoded_text}&op=translate"
+            webbrowser.open(url)
+            return True
+        else:
+            self.speak("I couldn't understand what to translate.")
+            return False
+
+    def dictionary_lookup(self, command):
+        """Look up the definition of a word"""
+        # Extract word from command
+        word = None
+        for phrase in ["define", "meaning of"]:
+            if phrase in command:
+                word = command.replace(phrase, "").strip()
+                break
+            
+        if not word:
+            self.speak("Which word would you like me to define?")
+            word = self.listen()
+
+        if word:
+            self.speak(f"Looking up the definition of {word}")
+            try:
+                # Using free dictionary API
+                response = requests.get(f"https://api.dictionaryapi.dev/api/v2/entries/en/{word}")
+                if response.status_code == 200:
+                    data = response.json()
+                    definition = data[0]["meanings"][0]["definitions"][0]["definition"]
+                    part_of_speech = data[0]["meanings"][0]["partOfSpeech"]
+                    self.speak(f"{word} is a {part_of_speech}.")
+                    self.speak(f"Definition: {definition}")
+
+                    # Check if there are examples
+                    if "example" in data[0]["meanings"][0]["definitions"][0]:
+                        example = data[0]["meanings"][0]["definitions"][0]["example"]
+                        self.speak(f"Example: {example}")
+                    return True
+                else:
+                    self.speak(f"I couldn't find a definition for {word}. Opening an online dictionary instead.")
+                    webbrowser.open(f"https://www.dictionary.com/browse/{word}")
+                    return True
+            except Exception as e:
+                self.speak(f"I encountered an error looking up that word: {str(e)}")
+                self.speak(f"Opening an online dictionary for {word} instead.")
+                webbrowser.open(f"https://www.dictionary.com/browse/{word}")
+                return True
+
+    def tell_joke(self, command):
+        """Tell a random joke"""
+        jokes = [
+            "Why don't scientists trust atoms? Because they make up everything!",
+            "Did you hear about the mathematician who's afraid of negative numbers? He'll stop at nothing to avoid them!",
+            "Why did the scarecrow win an award? Because he was outstanding in his field!",
+            "How does a computer get drunk? It takes screenshots!",
+            "What do you call fake spaghetti? An impasta!",
+            "Why did the programmer quit his job? Because he didn't get arrays!",
+            "How many programmers does it take to change a light bulb? None, that's a hardware problem!",
+            "What's the best thing about Switzerland? I don't know, but the flag is a big plus!",
+            "I told my wife she was drawing her eyebrows too high. She looked surprised!",
+            "Why don't we tell secrets on a farm? Because the potatoes have eyes and the corn has ears!"
+        ]
+
+        joke = random.choice(jokes)
+        self.speak(joke)
+        return True
+
+    def get_motivational_quote(self, command):
+        """Share a motivational or inspirational quote"""
+        quotes = [
+            "The only way to do great work is to love what you do. - Steve Jobs",
+            "Believe you can and you're halfway there. - Theodore Roosevelt",
+            "It does not matter how slowly you go as long as you do not stop. - Confucius",
+            "Everything you've ever wanted is on the other side of fear. - George Addair",
+            "Success is not final, failure is not fatal: It is the courage to continue that counts. - Winston Churchill",
+            "Hardships often prepare ordinary people for an extraordinary destiny. - C.S. Lewis",
+            "Your time is limited, don't waste it living someone else's life. - Steve Jobs",
+            "The future belongs to those who believe in the beauty of their dreams. - Eleanor Roosevelt",
+            "You are never too old to set another goal or to dream a new dream. - C.S. Lewis",
+            "The only limit to our realization of tomorrow will be our doubts of today. - Franklin D. Roosevelt"
+        ]
+
+        quote = random.choice(quotes)
+        self.speak(quote)
+        return True
+
+    def search_files(self, command):
+        """Search for files on the computer"""
+        # Extract file type or name from command
+        file_query = None
+        for phrase in ["search files", "find files"]:
+            if phrase in command:
+                file_query = command.replace(phrase, "").strip()
+                break
+            
+        if not file_query:
+            self.speak("What type of files would you like me to search for?")
+            file_query = self.listen()
+
+        if file_query:
+            self.speak(f"Searching for {file_query} files on your computer")
+
+            # Determine search approach based on query
+            if file_query.startswith("."):
+                # This is a file extension search (e.g., ".pdf")
+                search_term = file_query
+            else:
+                # This is a keyword search
+                if not file_query.endswith("files"):
+                    search_term = file_query + " files"
+                else:
+                    search_term = file_query
+
+            # Open Windows Explorer with search
+            search_command = f'explorer.exe search-ms:query={search_term}&crumb=location:%3A'
+            subprocess.Popen(search_command, shell=True)
+            return True
+        else:
+            self.speak("I couldn't understand what files to search for.")
+            return False
+    
     def save_reminders(self):
         """Save reminders to file"""
         try:
