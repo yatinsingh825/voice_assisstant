@@ -7,6 +7,8 @@ import random
 import json
 import wikipedia
 import requests
+import google.generativeai as genai
+from typing import Optional
 import subprocess
 import time
 import platform
@@ -28,21 +30,30 @@ class VoiceAssistant:
         self.recognizer = sr.Recognizer()
         self.engine = pyttsx3.init()
         self.wake_word = name.lower()
-        
+
+        # Add this to your VoiceAssistant's __init__ method
+        self.gemini_api_key = "AIzaSyBiTh7z33wRmEh2aheBvx6PtowCbeKt4Ug"  # Replace with your actual API key
+        try:
+            genai.configure(api_key=self.gemini_api_key)
+            self.gemini_model = genai.GenerativeModel('gemini-2.0-flash')
+        except Exception as e:
+            print(f"Error initializing Gemini API: {e}") 
+            self.gemini_model = None
+
         # Set voice properties
         voices = self.engine.getProperty('voices')
         self.engine.setProperty('voice', voices[1].id)  
         self.engine.setProperty('rate', 180)  
         
           # Initialize the news API client - you'll need to get an API key from newsapi.org
-        self.news_api_key = "pub_721854cc9889ae3597d17a24772cfaa8e015d"  # Replace with your actual API key
+        self.news_api_key = "pub_721854cc9889ae3597d17a24772cfaa8e015d"  
         try:
             self.news_client = NewsApiClient(api_key=self.news_api_key)
         except:
-            self.news_client = None
+            self.news_client = None 
             
         # Weather API key - get from OpenWeatherMap
-        self.weather_api_key = "c94d6753c91b8ec0bea1faea5591a2dc"  # Replace with your actual API key
+        self.weather_api_key = "c94d6753c91b8ec0bea1faea5591a2dc" 
         
         # Initialize reminders list and load any saved reminders
         self.reminders_file = "reminders.pkl"
@@ -62,6 +73,10 @@ class VoiceAssistant:
             "help": self.show_capabilities,
             "capabilities": self.show_capabilities,
             "password": self.handle_password,
+            "generate code": self.generate_code,
+            "write code": self.generate_code,
+            "code for": self.generate_code,
+            "implement": self.generate_code,
             "generate password": self.generate_password,
             "check password": self.check_password_strength,
             "convert currency": self.convert_currency,
@@ -142,7 +157,126 @@ class VoiceAssistant:
         )
         self.speak(developer_info)
 
-    
+    def generate_code(self, command: str) -> None:
+        """Generate code using Gemini API based on user's description"""
+        try:
+            if not self.gemini_model:
+                self.speak("Sorry, the Gemini API is not configured properly.")
+                return
+
+            # Extract the programming task from the command
+            # Remove trigger phrases to get the actual request
+            code_request = command
+            for trigger in ["generate code", "write code", "code for", "implement"]:
+                code_request = code_request.replace(trigger, "").strip()
+
+            if not code_request or code_request.lower() in ["for", "to", "that"]:
+                self.speak("What code would you like me to generate? Please describe the functionality.")
+                with sr.Microphone() as source:
+                    self.speak("I'm listening...")
+                    audio = self.recognizer.listen(source)
+                    try:
+                        code_request = self.recognizer.recognize_google(audio)
+                        print(f"You requested: {code_request}")
+                    except:
+                        self.speak("Sorry, I couldn't understand your request.")
+                        return
+
+            # Enhance the prompt for better code generation
+            enhanced_prompt = f"""
+            Generate clean, well-commented, production-quality code for the following task:
+
+            {code_request}
+
+            Include:
+            - Appropriate imports
+            - Clear comments explaining the logic
+            - Error handling where appropriate
+            - Example usage if possible
+
+            Return ONLY the code without additional explanations.
+            """
+
+            self.speak(f"Generating code for: {code_request}")
+            print(f"Generating code using Gemini API...")
+
+            # Generate code using Gemini
+            response = self.gemini_model.generate_content(enhanced_prompt)
+
+            if not response or not response.text:
+                self.speak("I couldn't generate code for that request.")
+                return
+
+            # Extract code from response
+            code = response.text
+
+            # Clean up the code (remove markdown code blocks if present)
+            if "```" in code:
+                code_blocks = code.split("```")
+                # Find the code block (typically the second element after splitting)
+                for block in code_blocks:
+                    if block.strip() and not block.strip().lower().startswith(('python', 'java', 'javascript', 'c++', 'c#')):
+                        code = block.strip()
+                        break
+                    
+            # Print the generated code
+            print("\n----- GENERATED CODE -----\n")
+            print(code)
+            print("\n--------------------------\n")
+
+            # Speak a summary
+            self.speak("I've generated the code for your request. You can see it in the console.")
+            self.speak("Would you like me to explain this code or save it to a file?")
+
+            # Listen for user's response about explaining or saving
+            with sr.Microphone() as source:
+                audio = self.recognizer.listen(source)
+                try:
+                    response = self.recognizer.recognize_google(audio).lower()
+                    print(f"You said: {response}")
+
+                    if "explain" in response:
+                        explanation_prompt = f"Explain the following code in simple terms:\n\n{code}"
+                        explanation = self.gemini_model.generate_content(explanation_prompt).text
+                        self.speak("Here's an explanation of the code:")
+                        print("\n----- CODE EXPLANATION -----\n")
+                        print(explanation)
+                        print("\n----------------------------\n")
+                        self.speak(explanation)
+
+                    elif "save" in response or "file" in response:
+                        # Determine filename and language
+                        language_extensions = {
+                            "python": ".py", "java": ".java", "javascript": ".js", "html": ".html",
+                            "css": ".css", "c++": ".cpp", "c#": ".cs", "go": ".go", "ruby": ".rb",
+                            "php": ".php", "rust": ".rs", "swift": ".swift", "typescript": ".ts"
+                        }
+
+                        # Try to determine language from the code or prompt
+                        extension = ".txt"  # Default
+                        for lang, ext in language_extensions.items():
+                            if lang in code_request.lower() or lang in code.lower():
+                                extension = ext
+                                break
+
+                        # Create a timestamped filename
+                        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+                        filename = f"generated_code_{timestamp}{extension}"
+
+                        # Save the code to a file
+                        with open(filename, "w") as f:
+                            f.write(code)
+
+                        self.speak(f"Code has been saved to {filename}")
+
+                except:
+                    self.speak("I didn't catch your response. The code is available in the console output.")
+
+        except Exception as e:
+            self.speak(f"Sorry, I encountered an error while generating code: {str(e)}")
+            print(f"Code generation error: {str(e)}")
+
+
     def handle_password(self, command):
         """Handle password-related commands"""
         if "generate" in command:
@@ -272,15 +406,12 @@ class VoiceAssistant:
     def convert_currency(self, command):
         """Convert currency from one type to another"""
         try:
-            # Initialize currency converter
-            c = CurrencyRates()
-
             # Parse the command to get currencies and amount
             amount_match = re.search(r'(\d+(\.\d+)?)', command)
             from_currency_match = re.search(r'from\s+(\w{3})', command)
             to_currency_match = re.search(r'to\s+(\w{3})', command)
-
-            # Handle cases where currency codes might be spelled out
+            
+            # Currency mapping dictionary
             currency_map = {
                 'dollars': 'USD', 'usd': 'USD', 'dollar': 'USD', 'us dollar': 'USD', 'us dollars': 'USD',
                 'euros': 'EUR', 'euro': 'EUR', 'eur': 'EUR',
@@ -289,12 +420,11 @@ class VoiceAssistant:
                 'yuan': 'CNY', 'cny': 'CNY', 'chinese yuan': 'CNY',
                 'rupees': 'INR', 'rupee': 'INR', 'inr': 'INR', 'indian rupee': 'INR'
             }
-
-            # If no explicit pattern, try to extract from the command text
+            
+            # Extract currencies from text
             if not from_currency_match or not to_currency_match:
                 for currency_name, code in currency_map.items():
                     if currency_name in command.lower():
-                        # Find where this currency appears in the command
                         pos = command.lower().find(currency_name)
                         if 'to' in command.lower()[pos:]:
                             if not from_currency_match:
@@ -302,42 +432,52 @@ class VoiceAssistant:
                         else:
                             if not to_currency_match:
                                 to_currency_match = type('obj', (), {'group': lambda x: code})
-
+            
             # Interactive mode if information is missing
             amount = float(amount_match.group(1)) if amount_match else None
             from_currency = from_currency_match.group(1).upper() if from_currency_match else None
             to_currency = to_currency_match.group(1).upper() if to_currency_match else None
-
+            
             if amount is None:
                 self.speak("What amount would you like to convert?")
                 amount = float(input("Enter amount: "))
-
+            
             if from_currency is None:
                 self.speak("What currency are you converting from? Please enter the 3-letter currency code.")
                 from_currency = input("From currency (e.g., USD): ").upper()
-
+            
             if to_currency is None:
                 self.speak("What currency are you converting to? Please enter the 3-letter currency code.")
                 to_currency = input("To currency (e.g., EUR): ").upper()
-
-            # Perform conversion
+            
+            # Use ExchangeRate-API (free tier) instead of forex-python
+            api_url = f"https://open.er-api.com/v6/latest/{from_currency}"
+            
             try:
-                conversion_rate = c.get_rate(from_currency, to_currency)
-                converted_amount = c.convert(from_currency, to_currency, amount)
-
-                # Format the output
-                self.speak(f"{amount} {from_currency} is equal to {converted_amount:.2f} {to_currency}.")
-                self.speak(f"The current exchange rate is 1 {from_currency} = {conversion_rate:.4f} {to_currency}.")
-                print(f"{amount} {from_currency} = {converted_amount:.2f} {to_currency}")
-                print(f"Rate: 1 {from_currency} = {conversion_rate:.4f} {to_currency}")
+                response = requests.get(api_url)
+                data = response.json()
+                
+                if data["result"] == "success":
+                    rates = data["rates"]
+                    if to_currency in rates:
+                        conversion_rate = rates[to_currency]
+                        converted_amount = amount * conversion_rate
+                        
+                        # Format the output
+                        self.speak(f"{amount} {from_currency} is equal to {converted_amount:.2f} {to_currency}.")
+                        self.speak(f"The current exchange rate is 1 {from_currency} = {conversion_rate:.4f} {to_currency}.")
+                        print(f"{amount} {from_currency} = {converted_amount:.2f} {to_currency}")
+                        print(f"Rate: 1 {from_currency} = {conversion_rate:.4f} {to_currency}")
+                    else:
+                        self.speak(f"Sorry, I couldn't find the conversion rate for {to_currency}.")
+                else:
+                    self.speak("I couldn't retrieve the current exchange rates.")
             except Exception as e:
-                self.speak(f"I couldn't perform that conversion. Please make sure you're using valid currency codes.")
+                self.speak(f"I couldn't perform that conversion. Please check your internet connection and try again.")
                 print(f"Conversion error: {str(e)}")
         except Exception as e:
             self.speak(f"Sorry, I encountered an error while converting currency: {str(e)}")
-
-
-
+    
     def check_speed(self, command):
         """Check internet speed using speedtest-cli"""
         self.speak("Running an internet speed test. This might take a few moments...")
